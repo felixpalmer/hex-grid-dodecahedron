@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import DeckGL from '@deck.gl/react';
-import { OrthographicView, type PickingInfo } from '@deck.gl/core';
-import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
+import {OrthographicView, type PickingInfo} from '@deck.gl/core';
+import {PathLayer, PolygonLayer, ScatterplotLayer, TextLayer} from '@deck.gl/layers';
 
 import {
   AC,
@@ -17,7 +17,7 @@ import {
   unfold,
   type Pt,
 } from './transfer';
-import { buildGrid, sphereCellCount, type Cell } from './grid';
+import {buildGrid, sphereCellCount, type Cell} from './grid';
 
 const MAX_RES = 5;
 // Which icosa face (wedge [60k°, 60(k+1)°]) the "highlight one face" option
@@ -49,7 +49,7 @@ const HIGHLIGHT_FILL: [number, number, number, number] = [255, 193, 61, 150];
 const DOT_FILL: [number, number, number, number] = [200, 30, 30, 255];
 const LABEL_COLOR: [number, number, number, number] = [110, 110, 110, 255];
 
-const INITIAL_VIEW_STATE = { target: [0, 0, 0] as [number, number, number], zoom: -0.35 };
+const INITIAL_VIEW_STATE = {target: [0, 0, 0] as [number, number, number], zoom: -0.35};
 
 // flipY: false keeps math-convention y-up, so the counter-clockwise vertex
 // order actually renders counter-clockwise on screen.
@@ -139,7 +139,7 @@ const App: React.FC = () => {
   );
   const grid = useMemo(() => toDisplay(cells, foldT), [cells, foldT]);
   const parentCells = useMemo(
-    () => (showParent && resolution > 0 ? buildGrid(resolution - 1, { extendFaces }) : null),
+    () => (showParent && resolution > 0 ? buildGrid(resolution - 1, {extendFaces}) : null),
     [showParent, resolution, extendFaces],
   );
   const parentGrid = useMemo(
@@ -161,8 +161,8 @@ const App: React.FC = () => {
     for (let b = 0; b <= 10; b++) fanCorners.push(f(icoCorner(b)));
     const seamWidth = extendFaces ? 1.2 : 2.5;
     const seams = [
-      { path: [A, fanCorners[0]], width: seamWidth },
-      { path: [fanCorners[10], A], width: seamWidth },
+      {path: [A, fanCorners[0]], width: seamWidth},
+      {path: [fanCorners[10], A], width: seamWidth},
     ];
 
     // Full-face fan: far corners B_k plus the chord midpoints (collinear at
@@ -174,8 +174,8 @@ const App: React.FC = () => {
     }
     faceFanOuter.push(f(polar(300 * DEG, 1)));
     if (extendFaces) {
-      seams.push({ path: [A, faceFanOuter[0]], width: 2.5 });
-      seams.push({ path: [faceFanOuter[10], A], width: 2.5 });
+      seams.push({path: [A, faceFanOuter[0]], width: 2.5});
+      seams.push({path: [faceFanOuter[10], A], width: 2.5});
     }
 
     // Icosa edges radiating from the vertex, when full faces are shown.
@@ -217,13 +217,13 @@ const App: React.FC = () => {
       pentCorner(2 * HIGHLIGHT_FACE + 1),
       pentCorner(2 * HIGHLIGHT_FACE + 2),
     ].map(pentDisp);
-    return { face, fanOuter: fanCorners, seams, faceFanOuter, faceEdges, gap, rays, hlTriangle, hlKite };
+    return {face, fanOuter: fanCorners, seams, faceFanOuter, faceEdges, gap, rays, hlTriangle, hlKite};
   }, [foldT, extendFaces]);
 
   const labelY = extendFaces ? -430 : -285;
   const labels = [
-    { pos: [ICO_C[0], labelY] as Pt, text: 'Icosahedron, unfolded at a vertex' },
-    { pos: [PENT_C[0], labelY] as Pt, text: 'Dodecahedron face' },
+    {pos: [ICO_C[0], labelY] as Pt, text: 'Icosahedron, unfolded at a vertex'},
+    {pos: [PENT_C[0], labelY] as Pt, text: 'Dodecahedron face'},
   ];
 
   const handleHover = useCallback(
@@ -236,10 +236,10 @@ const App: React.FC = () => {
       const [wx, wy] = info.coordinate;
       if ((info.layer?.id ?? '').startsWith('ico')) {
         const p = unfold([(wx - ICO_C[0]) / S, (wy - ICO_C[1]) / S], foldT);
-        setHover({ index: info.index, icoPt: [wx, wy], pentPt: pentDisp(transfer(p)) });
+        setHover({index: info.index, icoPt: [wx, wy], pentPt: pentDisp(transfer(p))});
       } else {
         const q: Pt = [wx - PENT_C[0], wy - PENT_C[1]];
-        setHover({ index: info.index, pentPt: [wx, wy], icoPt: icoDisp(fold(invTransfer(q), foldT)) });
+        setHover({index: info.index, pentPt: [wx, wy], icoPt: icoDisp(fold(invTransfer(q), foldT))});
       }
     },
     [foldT],
@@ -261,35 +261,35 @@ const App: React.FC = () => {
   // When one face is highlighted, the rest of the icosa pattern goes faint.
   const icoCellLayerProps = faceHighlightOn
     ? {
-        ...cellLayerProps,
-        getFillColor: (d: DisplayCell) =>
-          d.cell.kind === 'pentagon'
-            ? PENT_FILL_FAINT
-            : d.cell.centerInFace
-              ? HEX_FILL_FAINT
-              : FRAGMENT_FILL_FAINT,
-        getLineColor: INK_FAINT,
-      }
+      ...cellLayerProps,
+      getFillColor: (d: DisplayCell) =>
+        d.cell.kind === 'pentagon'
+          ? PENT_FILL_FAINT
+          : d.cell.centerInFace
+            ? HEX_FILL_FAINT
+            : FRAGMENT_FILL_FAINT,
+      getLineColor: INK_FAINT,
+    }
     : cellLayerProps;
 
   const layers = [
     foldT < 1 &&
-      new PolygonLayer<{ poly: Pt[] }>({
-        id: 'gap-wedge',
-        data: [{ poly: geom.gap }],
-        getPolygon: (d) => d.poly,
-        getFillColor: [GAP_FILL[0], GAP_FILL[1], GAP_FILL[2], Math.round(GAP_FILL[3] * (1 - foldT))],
-        stroked: false,
-      }),
+    new PolygonLayer<{poly: Pt[]}>({
+      id: 'gap-wedge',
+      data: [{poly: geom.gap}],
+      getPolygon: (d) => d.poly,
+      getFillColor: [GAP_FILL[0], GAP_FILL[1], GAP_FILL[2], Math.round(GAP_FILL[3] * (1 - foldT))],
+      stroked: false,
+    }),
     extendFaces &&
-      new PathLayer({
-        id: 'face-edges',
-        data: geom.faceEdges,
-        getPath: (d: Pt[]) => d,
-        getColor: [25, 25, 25, 70] as [number, number, number, number],
-        widthUnits: 'pixels',
-        getWidth: 1,
-      }),
+    new PathLayer({
+      id: 'face-edges',
+      data: geom.faceEdges,
+      getPath: (d: Pt[]) => d,
+      getColor: [25, 25, 25, 70] as [number, number, number, number],
+      widthUnits: 'pixels',
+      getWidth: 1,
+    }),
     new PolygonLayer<DisplayCell>({
       id: 'ico-cells',
       getPolygon: (d) => d.ico,
@@ -301,96 +301,96 @@ const App: React.FC = () => {
       ...cellLayerProps,
     }),
     faceHighlightOn &&
-      new PolygonLayer<DisplayCell>({
-        id: 'ico-face-pieces',
-        data: grid.filter((d) => d.hi),
-        getPolygon: (d) => d.hi!,
-        getFillColor: (d) =>
-          d.cell.kind === 'pentagon' ? PENT_FILL : d.cell.centerInFace ? HEX_FILL : FRAGMENT_FILL,
-        getLineColor: INK,
-        filled: true,
-        stroked: true,
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1,
-      }),
+    new PolygonLayer<DisplayCell>({
+      id: 'ico-face-pieces',
+      data: grid.filter((d) => d.hi),
+      getPolygon: (d) => d.hi!,
+      getFillColor: (d) =>
+        d.cell.kind === 'pentagon' ? PENT_FILL : d.cell.centerInFace ? HEX_FILL : FRAGMENT_FILL,
+      getLineColor: INK,
+      filled: true,
+      stroked: true,
+      lineWidthUnits: 'pixels',
+      getLineWidth: 1,
+    }),
     faceHighlightOn &&
-      new PolygonLayer<{ poly: Pt[] }>({
-        id: 'pent-kite-wash',
-        data: [{ poly: geom.hlKite }],
-        getPolygon: (d) => d.poly,
-        getFillColor: KITE_WASH,
-        stroked: false,
-      }),
+    new PolygonLayer<{poly: Pt[]}>({
+      id: 'pent-kite-wash',
+      data: [{poly: geom.hlKite}],
+      getPolygon: (d) => d.poly,
+      getFillColor: KITE_WASH,
+      stroked: false,
+    }),
     showSectors &&
-      new PathLayer({
-        id: 'sectors',
-        data: geom.rays,
-        getPath: (d: Pt[]) => d,
-        getColor: SECTOR_LINE,
-        widthUnits: 'pixels',
-        getWidth: 1,
-      }),
+    new PathLayer({
+      id: 'sectors',
+      data: geom.rays,
+      getPath: (d: Pt[]) => d,
+      getColor: SECTOR_LINE,
+      widthUnits: 'pixels',
+      getWidth: 1,
+    }),
     parentGrid &&
-      new PathLayer({
-        id: 'parent-outline',
-        data: parentGrid.flatMap((d) => [d.pent, d.ico]),
-        getPath: (d: Pt[]) => closed(d),
-        getColor: PARENT_LINE,
-        widthUnits: 'pixels',
-        getWidth: 2,
-      }),
+    new PathLayer({
+      id: 'parent-outline',
+      data: parentGrid.flatMap((d) => [d.pent, d.ico]),
+      getPath: (d: Pt[]) => closed(d),
+      getColor: PARENT_LINE,
+      widthUnits: 'pixels',
+      getWidth: 2,
+    }),
     hovered &&
-      new PolygonLayer({
-        id: 'highlight',
-        data: [hovered.pent, hovered.ico],
-        getPolygon: (d: Pt[]) => d,
-        getFillColor: HIGHLIGHT_FILL,
-        getLineColor: INK,
-        stroked: true,
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1.5,
-        pickable: false,
-      }),
+    new PolygonLayer({
+      id: 'highlight',
+      data: [hovered.pent, hovered.ico],
+      getPolygon: (d: Pt[]) => d,
+      getFillColor: HIGHLIGHT_FILL,
+      getLineColor: INK,
+      stroked: true,
+      lineWidthUnits: 'pixels',
+      getLineWidth: 1.5,
+      pickable: false,
+    }),
     new PathLayer({
       id: 'outlines',
       data: [
-        { path: geom.face, width: 2.5 },
-        { path: geom.fanOuter, width: extendFaces ? 1.2 : 2.5 },
-        ...(extendFaces ? [{ path: geom.faceFanOuter, width: 2.5 }] : []),
-        ...(faceHighlightOn ? [{ path: geom.hlTriangle, width: 3 }] : []),
+        {path: geom.face, width: 2.5},
+        {path: geom.fanOuter, width: extendFaces ? 1.2 : 2.5},
+        ...(extendFaces ? [{path: geom.faceFanOuter, width: 2.5}] : []),
+        ...(faceHighlightOn ? [{path: geom.hlTriangle, width: 3}] : []),
       ],
-      getPath: (d: { path: Pt[] }) => d.path,
+      getPath: (d: {path: Pt[]}) => d.path,
       getColor: INK,
       widthUnits: 'pixels',
-      getWidth: (d: { width: number }) => d.width,
+      getWidth: (d: {width: number}) => d.width,
     }),
     foldT < 1 &&
-      new PathLayer({
-        id: 'seam-edges',
-        data: geom.seams,
-        getPath: (d: { path: Pt[] }) => d.path,
-        getColor: [INK[0], INK[1], INK[2], Math.round(255 * (1 - foldT))] as [number, number, number, number],
-        widthUnits: 'pixels',
-        getWidth: (d: { width: number }) => d.width,
-      }),
+    new PathLayer({
+      id: 'seam-edges',
+      data: geom.seams,
+      getPath: (d: {path: Pt[]}) => d.path,
+      getColor: [INK[0], INK[1], INK[2], Math.round(255 * (1 - foldT))] as [number, number, number, number],
+      widthUnits: 'pixels',
+      getWidth: (d: {width: number}) => d.width,
+    }),
     hover &&
-      new ScatterplotLayer({
-        id: 'hover-dots',
-        data: [hover.pentPt, hover.icoPt],
-        getPosition: (d: Pt) => d,
-        getFillColor: DOT_FILL,
-        getLineColor: WHITE_RGBA,
-        stroked: true,
-        radiusUnits: 'pixels',
-        getRadius: 5,
-        lineWidthUnits: 'pixels',
-        getLineWidth: 1.5,
-      }),
+    new ScatterplotLayer({
+      id: 'hover-dots',
+      data: [hover.pentPt, hover.icoPt],
+      getPosition: (d: Pt) => d,
+      getFillColor: DOT_FILL,
+      getLineColor: WHITE_RGBA,
+      stroked: true,
+      radiusUnits: 'pixels',
+      getRadius: 5,
+      lineWidthUnits: 'pixels',
+      getLineWidth: 1.5,
+    }),
     new TextLayer({
       id: 'labels',
       data: labels,
-      getPosition: (d: { pos: Pt }) => d.pos,
-      getText: (d: { text: string }) => d.text,
+      getPosition: (d: {pos: Pt}) => d.pos,
+      getText: (d: {text: string}) => d.text,
       getSize: 14,
       sizeUnits: 'pixels',
       getColor: LABEL_COLOR,
@@ -398,7 +398,7 @@ const App: React.FC = () => {
   ].filter(Boolean);
 
   return (
-    <div style={{ position: 'absolute', inset: 0 }}>
+    <div style={{position: 'absolute', inset: 0}}>
       <DeckGL
         views={VIEW}
         initialViewState={INITIAL_VIEW_STATE}
@@ -406,8 +406,8 @@ const App: React.FC = () => {
         layers={layers}
         useDevicePixels={2}
         onHover={handleHover}
-        getCursor={({ isHovering }) => (isHovering ? 'crosshair' : 'grab')}
-        style={{ background: '#fff' }}
+        getCursor={({isHovering}) => (isHovering ? 'crosshair' : 'grab')}
+        style={{background: '#fff'}}
       />
 
       <div style={panelStyle}>
@@ -424,9 +424,19 @@ const App: React.FC = () => {
               setResolution(Number(e.target.value));
               setHover(null);
             }}
-            style={{ flex: 1 }}
+            style={{flex: 1}}
           />
           <span style={sliderValueStyle}>{resolution}</span>
+        </div>
+        <div style={introStyle}>
+          In hexagonal indexing systems (e.g. h3, igeo7) hexagons are laid out on the faces of an
+          icosahedron. It is geometrically equivalent to lay them out on the dual solid, the
+          dodecahedron, leading to the same result on the sphere.
+        </div>
+        <div style={introStyle}>
+          While the hexagons are skewed on the dodecahedron, it
+          shows where the 12 pentagonal cells come from and why the total number of cells is
+          divisible by 12.
         </div>
         <div style={metaStyle}>
           {resolution % 2 === 1 ? 'Class III — rotated 19.1°' : 'Class II — aligned'}
@@ -529,6 +539,12 @@ const sliderValueStyle: React.CSSProperties = {
   fontSize: 12,
   color: '#333',
   textAlign: 'right',
+};
+
+const introStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: '#555',
+  lineHeight: 1.5,
 };
 
 const metaStyle: React.CSSProperties = {
