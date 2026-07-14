@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AC, DEG, R_P, facePentagon, fold, pentCorner, type Pt } from './transfer.ts';
-import { buildGrid, polygonArea } from './grid.ts';
+import { buildGrid, polygonArea, sphereCellCount } from './grid.ts';
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const faceArea = polygonArea(facePentagon());
@@ -159,6 +159,21 @@ test('central cell folds exactly onto its pentagon shape (no end-of-animation ju
       assert.ok(nearest < 1e-6 * R_P, `res ${res}: pentagon point ${q} unmatched (${nearest})`);
     }
   }
+});
+
+test('sphere cell count is 10·7^res + 2, always a multiple of 12', () => {
+  assert.equal(sphereCellCount(0), 12); // the 12 dodecahedron faces
+  assert.equal(sphereCellCount(1), 72); // 12 pentagons + 60 hexagons
+  assert.equal(sphereCellCount(2), 492);
+  for (let res = 0; res <= 8; res++) {
+    assert.equal(sphereCellCount(res) % 12, 0, `res ${res}`);
+  }
+  // Consistency with the rendered grid: one face holds 1 pentagon plus the
+  // hexes it owns; 12 faces then account for every cell on the sphere
+  // (12 pentagons + 12 × in-face hexes = total, res 1: 12 + 12·5 = 72).
+  const cells = buildGrid(1);
+  const inFaceHexes = cells.filter((c) => c.kind === 'hex' && c.centerInFace).length;
+  assert.equal(12 + 12 * inFaceHexes, sphereCellCount(1));
 });
 
 test('odd resolutions are rotated ~19.1° relative to even ones', () => {

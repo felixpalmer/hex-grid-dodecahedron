@@ -17,7 +17,7 @@ import {
   unfold,
   type Pt,
 } from './transfer';
-import { buildGrid, type Cell } from './grid';
+import { buildGrid, sphereCellCount, type Cell } from './grid';
 
 const MAX_RES = 5;
 // Which icosa face (wedge [60k°, 60(k+1)°]) the "highlight one face" option
@@ -27,8 +27,8 @@ const HIGHLIGHT_FACE = 1;
 // Display transforms: the icosa fan (edge length 1) is scaled so both
 // diagrams are the same size, and the two diagrams sit side by side.
 const S = R_P / AC;
-const ICO_C: Pt = [-370, 0];
-const PENT_C: Pt = [310, 0];
+const ICO_C: Pt = [-440, 0];
+const PENT_C: Pt = [370, 0];
 const icoDisp = (p: Pt): Pt => [p[0] * S + ICO_C[0], p[1] * S + ICO_C[1]];
 const pentDisp = (p: Pt): Pt => [p[0] + PENT_C[0], p[1] + PENT_C[1]];
 
@@ -431,7 +431,8 @@ const App: React.FC = () => {
         <div style={metaStyle}>
           {resolution % 2 === 1 ? 'Class III — rotated 19.1°' : 'Class II — aligned'}
           {' · '}
-          {grid.length.toLocaleString()} cells
+          {sphereCellCount(resolution).toLocaleString()} cells on sphere (12 ×{' '}
+          {(sphereCellCount(resolution) / 12).toLocaleString()})
         </div>
         <label style={checkboxRowStyle}>
           <input

@@ -72,6 +72,13 @@ export interface GridOptions {
   highlightFace?: number;
 }
 
+// Total cells covering the whole sphere at a resolution: 12 pentagons (one
+// per dodecahedron face / icosahedron vertex) plus hexagons. In hex-area
+// units the sphere holds 10·7^res cells (a pentagon counts 5/6), giving
+// 10·7^res + 2 cells in total — always a multiple of 12, since
+// 7^res ≡ 1 (mod 6).
+export const sphereCellCount = (res: number): number => 10 * 7 ** res + 2;
+
 export const rotate = ([x, y]: Pt, angle: number): Pt => {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
