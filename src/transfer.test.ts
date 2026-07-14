@@ -4,12 +4,14 @@ import {
   AC,
   DEG,
   R_P,
+  fold,
   icoCorner,
   invTransfer,
   invTransferCanonical,
   pentCorner,
   polar,
   transfer,
+  unfold,
   type Pt,
 } from './transfer.ts';
 
@@ -100,6 +102,23 @@ test('transfer inverts invTransfer around the full pentagon', () => {
     const p = invTransfer(q);
     const fwd = transfer(p);
     assert.ok(Math.hypot(fwd[0] - q[0], fwd[1] - q[1]) < 1e-9 * R_P, `angle ${deg}`);
+  }
+});
+
+test('fold interpolates identity → transfer (rescaled), with unfold as inverse', () => {
+  const S = R_P / AC;
+  for (let deg = 2; deg < 300; deg += 13) {
+    for (const r of [0.15, 0.45]) {
+      const p = polar(deg * DEG, r);
+      const p0 = fold(p, 0);
+      assert.ok(dist(p0, p) < 1e-12, 'fold at t=0 is the identity');
+      const p1 = fold(p, 1);
+      const q = transfer(p);
+      assert.ok(dist(p1, [q[0] / S, q[1] / S]) < 1e-9, 'fold at t=1 matches transfer');
+      for (const t of [0.3, 0.7]) {
+        assert.ok(dist(unfold(fold(p, t), t), p) < 1e-9, `unfold inverts fold at t=${t}`);
+      }
+    }
   }
 });
 

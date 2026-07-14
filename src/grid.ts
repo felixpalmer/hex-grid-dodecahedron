@@ -224,9 +224,12 @@ export function buildGrid(res: number, opts: GridOptions = {}): Cell[] {
   const v4 = polar(theta + 270 * DEG, R);
   const v5 = polar(theta + 330 * DEG, R);
   const s = intersect(v4, v5, [0, 0], polar(300 * DEG, 1));
-  const pentIcosa: Pt[] = [[0, 0], rotate(s, -300 * DEG)];
-  for (let j = 0; j < 5; j++) pentIcosa.push(polar(theta + (30 + 60 * j) * DEG, R));
-  pentIcosa.push(s);
+  const pentIcosaCorners: Pt[] = [[0, 0], rotate(s, -300 * DEG)];
+  for (let j = 0; j < 5; j++) pentIcosaCorners.push(polar(theta + (30 + 60 * j) * DEG, R));
+  pentIcosaCorners.push(s);
+  // Insert sector-ray crossings like every hex cell has: the edges are
+  // straight in icosa space but kink there under the fold animation.
+  const pentIcosa = withRayCrossings(pentIcosaCorners, ICO_SECTOR, sectorIndex);
   cells.push({
     kind: 'pentagon',
     center: [0, 0],

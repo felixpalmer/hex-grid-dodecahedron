@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeckGL from '@deck.gl/react';
 import { OrthographicView, type PickingInfo } from '@deck.gl/core';
 import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
@@ -7,14 +7,14 @@ import {
   AC,
   DEG,
   R_P,
-  faceFanOutline,
   facePentagon,
-  fanOutline,
+  fold,
   icoCorner,
   invTransfer,
   pentCorner,
   polar,
   transfer,
+  unfold,
   type Pt,
 } from './transfer';
 import { buildGrid, type Cell } from './grid';
@@ -76,65 +76,140 @@ interface Hover {
   icoPt: Pt;
 }
 
-const toDisplay = (cells: Cell[]): DisplayCell[] =>
-  cells.map((cell) => ({
+const toDisplay = (cells: Cell[], t: number): DisplayCell[] => {
+  const icoFold = (p: Pt) => icoDisp(fold(p, t));
+  return cells.map((cell) => ({
     cell,
     pent: cell.polygon.map(pentDisp),
-    ico: cell.icosaPolygon.map(icoDisp),
-    hi: cell.highlightIcosa && cell.highlightIcosa.length >= 3
-      ? cell.highlightIcosa.map(icoDisp)
-      : undefined,
+    // At t=1 the fold equals the transfer, so the central cell's seam-split
+    // "pac-man" would close with a zero-width stroke along the vanished cut;
+    // swap in its seamless pentagon-space boundary instead.
+    ico:
+      t === 1 && cell.kind === 'pentagon'
+        ? cell.polygon.map((q): Pt => [q[0] + ICO_C[0], q[1] + ICO_C[1]])
+        : cell.icosaPolygon.map(icoFold),
+    hi:
+      cell.highlightIcosa && cell.highlightIcosa.length >= 3
+        ? cell.highlightIcosa.map(icoFold)
+        : undefined,
   }));
+};
+
+// easeInOutCubic
+const ease = (u: number) => (u < 0.5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2);
 
 const App: React.FC = () => {
   const [resolution, setResolution] = useState(1);
   const [clip, setClip] = useState(true);
   const [extendFaces, setExtendFaces] = useState(false);
+  const [foldIco, setFoldIco] = useState(false);
+  const [foldT, setFoldT] = useState(0);
   const [showParent, setShowParent] = useState(false);
   const [showSectors, setShowSectors] = useState(false);
   const [hover, setHover] = useState<Hover | null>(null);
 
+  // Animate foldT toward the checkbox target.
+  const foldTRef = useRef(foldT);
+  foldTRef.current = foldT;
+  useEffect(() => {
+    const from = foldTRef.current;
+    const target = foldIco ? 1 : 0;
+    if (from === target) return;
+    const duration = Math.max(250, 1100 * Math.abs(target - from));
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now: number) => {
+      const u = Math.min(1, (now - start) / duration);
+      setFoldT(u === 1 ? target : from + (target - from) * ease(u));
+      if (u < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [foldIco]);
+
   const faceHighlightOn = extendFaces;
-  const grid = useMemo(
+  const cells = useMemo(
     () =>
-      toDisplay(
-        buildGrid(resolution, {
-          clipToFace: clip,
-          extendFaces,
-          highlightFace: faceHighlightOn ? HIGHLIGHT_FACE : undefined,
-        }),
-      ),
+      buildGrid(resolution, {
+        clipToFace: clip,
+        extendFaces,
+        highlightFace: faceHighlightOn ? HIGHLIGHT_FACE : undefined,
+      }),
     [resolution, clip, extendFaces, faceHighlightOn],
   );
-  const parentGrid = useMemo(
-    () =>
-      showParent && resolution > 0
-        ? toDisplay(buildGrid(resolution - 1, { extendFaces }))
-        : null,
+  const grid = useMemo(() => toDisplay(cells, foldT), [cells, foldT]);
+  const parentCells = useMemo(
+    () => (showParent && resolution > 0 ? buildGrid(resolution - 1, { extendFaces }) : null),
     [showParent, resolution, extendFaces],
   );
+  const parentGrid = useMemo(
+    () => (parentCells ? toDisplay(parentCells, foldT) : null),
+    [parentCells, foldT],
+  );
 
-  const staticGeometry = useMemo(() => {
+  const geom = useMemo(() => {
+    const t = foldT;
+    const f = (p: Pt) => icoDisp(fold(p, t));
+    const A = icoDisp([0, 0]);
     const face = closed(facePentagon().map(pentDisp));
-    const fan = closed(fanOutline().map(icoDisp));
-    const faceFan = closed(faceFanOutline().map(icoDisp));
-    // The far edges of the five unfolded faces plus the icosa edges radiating
-    // from the vertex — drawn when the view extends to full faces.
+
+    // Fan outline, split into the outer boundary and the two seam edges (the
+    // cut faces) so the cut can fade out as the fold closes. Every boundary
+    // corner is included: interior ones are collinear at t = 0 and t = 1 but
+    // bend slightly mid-fold.
+    const fanCorners: Pt[] = [];
+    for (let b = 0; b <= 10; b++) fanCorners.push(f(icoCorner(b)));
+    const seamWidth = extendFaces ? 1.2 : 2.5;
+    const seams = [
+      { path: [A, fanCorners[0]], width: seamWidth },
+      { path: [fanCorners[10], A], width: seamWidth },
+    ];
+
+    // Full-face fan: far corners B_k plus the chord midpoints (collinear at
+    // t = 0, becoming the decagon's odd-ray corners at t = 1).
+    const faceFanOuter: Pt[] = [];
+    for (let k = 0; k < 5; k++) {
+      faceFanOuter.push(f(polar(k * 60 * DEG, 1)));
+      faceFanOuter.push(f(polar((k * 60 + 30) * DEG, Math.cos(30 * DEG))));
+    }
+    faceFanOuter.push(f(polar(300 * DEG, 1)));
+    if (extendFaces) {
+      seams.push({ path: [A, faceFanOuter[0]], width: 2.5 });
+      seams.push({ path: [faceFanOuter[10], A], width: 2.5 });
+    }
+
+    // Icosa edges radiating from the vertex, when full faces are shown.
     const faceEdges: Pt[][] = [];
-    for (let k = 1; k <= 4; k++) faceEdges.push([icoDisp([0, 0]), icoDisp(polar(k * 60 * DEG, 1))]);
-    // The deleted 60° wedge between the two seam edges: kite-shaped to match
-    // the fan outline, chord-bounded to match the full-face outline.
-    const gap = [[0, 0] as Pt, polar(300 * DEG, 0.5), polar(330 * DEG, AC), polar(360 * DEG, 0.5)].map(icoDisp);
-    const gapExtended = [[0, 0] as Pt, polar(300 * DEG, 1), polar(330 * DEG, Math.cos(30 * DEG)), polar(360 * DEG, 1)].map(icoDisp);
+    for (let k = 1; k <= 4; k++) faceEdges.push([A, f(polar(k * 60 * DEG, 1))]);
+
+    // The shrinking gap wedge, built directly in folded coordinates.
+    const gapStart = 300 + 60 * t;
+    const half = ((360 - gapStart) / 2) * DEG;
+    const apothem = AC * Math.cos(36 * DEG);
+    const d1 = extendFaces ? 1 + t * (2 * apothem - 1) : 0.5 + t * (apothem - 0.5);
+    const dMid = extendFaces ? d1 * Math.cos(half) : d1 / Math.cos(half);
+    const gap = [
+      [0, 0] as Pt,
+      polar(gapStart * DEG, d1),
+      polar(gapStart * DEG + half, dMid),
+      polar(360 * DEG, d1),
+    ].map(icoDisp);
+
     const rays: Pt[][] = [];
     for (let b = 0; b < 10; b++) {
       rays.push([pentDisp([0, 0]), pentDisp(pentCorner(b))]);
-      rays.push([icoDisp([0, 0]), icoDisp(icoCorner(b))]);
+      rays.push([A, f(icoCorner(b))]);
     }
+
     // The highlighted face triangle and, in the pentagon view, the kite fifth
     // that its near-vertex portion covers (between rays 72k° and 72(k+1)°).
     const hlTriangle = closed(
-      [[0, 0] as Pt, polar(HIGHLIGHT_FACE * 60 * DEG, 1), polar((HIGHLIGHT_FACE + 1) * 60 * DEG, 1)].map(icoDisp),
+      [
+        [0, 0] as Pt,
+        polar(HIGHLIGHT_FACE * 60 * DEG, 1),
+        polar((HIGHLIGHT_FACE * 60 + 30) * DEG, Math.cos(30 * DEG)),
+        polar((HIGHLIGHT_FACE + 1) * 60 * DEG, 1),
+      ].map(f),
     );
     const hlKite = [
       [0, 0] as Pt,
@@ -142,8 +217,8 @@ const App: React.FC = () => {
       pentCorner(2 * HIGHLIGHT_FACE + 1),
       pentCorner(2 * HIGHLIGHT_FACE + 2),
     ].map(pentDisp);
-    return { face, fan, faceFan, faceEdges, gap, gapExtended, rays, hlTriangle, hlKite };
-  }, []);
+    return { face, fanOuter: fanCorners, seams, faceFanOuter, faceEdges, gap, rays, hlTriangle, hlKite };
+  }, [foldT, extendFaces]);
 
   const labelY = extendFaces ? -430 : -285;
   const labels = [
@@ -151,21 +226,24 @@ const App: React.FC = () => {
     { pos: [PENT_C[0], labelY] as Pt, text: 'Dodecahedron face' },
   ];
 
-  const handleHover = useCallback((info: PickingInfo) => {
-    const datum = info.object as DisplayCell | undefined;
-    if (!info.coordinate || !datum || info.index == null || info.index < 0) {
-      setHover(null);
-      return;
-    }
-    const [wx, wy] = info.coordinate;
-    if ((info.layer?.id ?? '').startsWith('ico')) {
-      const p: Pt = [(wx - ICO_C[0]) / S, (wy - ICO_C[1]) / S];
-      setHover({ index: info.index, icoPt: [wx, wy], pentPt: pentDisp(transfer(p)) });
-    } else {
-      const q: Pt = [wx - PENT_C[0], wy - PENT_C[1]];
-      setHover({ index: info.index, pentPt: [wx, wy], icoPt: icoDisp(invTransfer(q)) });
-    }
-  }, []);
+  const handleHover = useCallback(
+    (info: PickingInfo) => {
+      const datum = info.object as DisplayCell | undefined;
+      if (!info.coordinate || !datum || info.index == null || info.index < 0) {
+        setHover(null);
+        return;
+      }
+      const [wx, wy] = info.coordinate;
+      if ((info.layer?.id ?? '').startsWith('ico')) {
+        const p = unfold([(wx - ICO_C[0]) / S, (wy - ICO_C[1]) / S], foldT);
+        setHover({ index: info.index, icoPt: [wx, wy], pentPt: pentDisp(transfer(p)) });
+      } else {
+        const q: Pt = [wx - PENT_C[0], wy - PENT_C[1]];
+        setHover({ index: info.index, pentPt: [wx, wy], icoPt: icoDisp(fold(invTransfer(q), foldT)) });
+      }
+    },
+    [foldT],
+  );
 
   const hovered = hover ? grid[hover.index] : null;
 
@@ -195,17 +273,18 @@ const App: React.FC = () => {
     : cellLayerProps;
 
   const layers = [
-    new PolygonLayer<{ poly: Pt[] }>({
-      id: 'gap-wedge',
-      data: [{ poly: extendFaces ? staticGeometry.gapExtended : staticGeometry.gap }],
-      getPolygon: (d) => d.poly,
-      getFillColor: GAP_FILL,
-      stroked: false,
-    }),
+    foldT < 1 &&
+      new PolygonLayer<{ poly: Pt[] }>({
+        id: 'gap-wedge',
+        data: [{ poly: geom.gap }],
+        getPolygon: (d) => d.poly,
+        getFillColor: [GAP_FILL[0], GAP_FILL[1], GAP_FILL[2], Math.round(GAP_FILL[3] * (1 - foldT))],
+        stroked: false,
+      }),
     extendFaces &&
       new PathLayer({
         id: 'face-edges',
-        data: staticGeometry.faceEdges,
+        data: geom.faceEdges,
         getPath: (d: Pt[]) => d,
         getColor: [25, 25, 25, 70] as [number, number, number, number],
         widthUnits: 'pixels',
@@ -237,7 +316,7 @@ const App: React.FC = () => {
     faceHighlightOn &&
       new PolygonLayer<{ poly: Pt[] }>({
         id: 'pent-kite-wash',
-        data: [{ poly: staticGeometry.hlKite }],
+        data: [{ poly: geom.hlKite }],
         getPolygon: (d) => d.poly,
         getFillColor: KITE_WASH,
         stroked: false,
@@ -245,7 +324,7 @@ const App: React.FC = () => {
     showSectors &&
       new PathLayer({
         id: 'sectors',
-        data: staticGeometry.rays,
+        data: geom.rays,
         getPath: (d: Pt[]) => d,
         getColor: SECTOR_LINE,
         widthUnits: 'pixels',
@@ -275,16 +354,25 @@ const App: React.FC = () => {
     new PathLayer({
       id: 'outlines',
       data: [
-        { path: staticGeometry.face, width: 2.5 },
-        { path: staticGeometry.fan, width: extendFaces ? 1.2 : 2.5 },
-        ...(extendFaces ? [{ path: staticGeometry.faceFan, width: 2.5 }] : []),
-        ...(faceHighlightOn ? [{ path: staticGeometry.hlTriangle, width: 3 }] : []),
+        { path: geom.face, width: 2.5 },
+        { path: geom.fanOuter, width: extendFaces ? 1.2 : 2.5 },
+        ...(extendFaces ? [{ path: geom.faceFanOuter, width: 2.5 }] : []),
+        ...(faceHighlightOn ? [{ path: geom.hlTriangle, width: 3 }] : []),
       ],
       getPath: (d: { path: Pt[] }) => d.path,
       getColor: INK,
       widthUnits: 'pixels',
       getWidth: (d: { width: number }) => d.width,
     }),
+    foldT < 1 &&
+      new PathLayer({
+        id: 'seam-edges',
+        data: geom.seams,
+        getPath: (d: { path: Pt[] }) => d.path,
+        getColor: [INK[0], INK[1], INK[2], Math.round(255 * (1 - foldT))] as [number, number, number, number],
+        widthUnits: 'pixels',
+        getWidth: (d: { width: number }) => d.width,
+      }),
     hover &&
       new ScatterplotLayer({
         id: 'hover-dots',
@@ -366,6 +454,17 @@ const App: React.FC = () => {
             }}
           />
           Show icosahedron face
+        </label>
+        <label style={checkboxRowStyle}>
+          <input
+            type="checkbox"
+            checked={foldIco}
+            onChange={(e) => {
+              setFoldIco(e.target.checked);
+              setHover(null);
+            }}
+          />
+          Fold into pentagon
         </label>
         <label style={checkboxRowStyle}>
           <input

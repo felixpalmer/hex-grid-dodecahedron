@@ -110,6 +110,38 @@ export function invTransfer(p: Pt): Pt {
   return mapBySector(p, k, pentCorner, icoCorner);
 }
 
+// --- Folding the fan closed ---------------------------------------------
+//
+// A continuous interpolation between the unfolded icosa fan (t = 0) and the
+// pentagon (t = 1), in icosa units: sector boundaries sweep from 30b° to
+// 36b°, edge-midpoint corners slide from |AM| to the pentagon apothem
+// (AC·cos36°), centroid corners stay put. fold(p, 1) equals transfer(p)
+// rescaled by AC/R_P, so the folded fan coincides with the face diagram.
+
+const FOLD_M_END = AC * Math.cos(36 * DEG);
+
+const foldCorner = (t: number) => (b: number): Pt =>
+  polar(
+    b * (ICO_SECTOR + t * (PENT_SECTOR - ICO_SECTOR)),
+    isEven(b) ? AM + t * (FOLD_M_END - AM) : AC,
+  );
+
+export function fold(p: Pt, t: number): Pt {
+  if (t === 0 || (p[0] === 0 && p[1] === 0)) return p;
+  return mapBySector(p, sectorIndex(p), icoCorner, foldCorner(t));
+}
+
+// Inverse of fold at the same t, on the global branch — for mapping hovered
+// points on the (partially) folded fan back to icosa space.
+export function unfold(q: Pt, t: number): Pt {
+  if (t === 0 || (q[0] === 0 && q[1] === 0)) return q;
+  let phi = Math.atan2(q[1], q[0]);
+  if (phi < 0) phi += 2 * Math.PI;
+  const sector = ICO_SECTOR + t * (PENT_SECTOR - ICO_SECTOR);
+  const k = Math.min(Math.floor(phi / sector), 9);
+  return mapBySector(q, k, foldCorner(t), icoCorner);
+}
+
 // The dodecahedron face outline: vertices sit on the odd sector boundaries,
 // counter-clockwise.
 export const facePentagon = (): Pt[] => [1, 3, 5, 7, 9].map(pentCorner);

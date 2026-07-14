@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEG, R_P, facePentagon, pentCorner, type Pt } from './transfer.ts';
+import { AC, DEG, R_P, facePentagon, fold, pentCorner, type Pt } from './transfer.ts';
 import { buildGrid, polygonArea } from './grid.ts';
 
 const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -139,6 +139,25 @@ test('highlighted-face pieces tile exactly one icosa triangle', () => {
       Math.abs(total - triangleArea) < 1e-6 * triangleArea,
       `res ${res}: highlight total ${total} vs ${triangleArea}`,
     );
+  }
+});
+
+test('central cell folds exactly onto its pentagon shape (no end-of-animation jump)', () => {
+  const S = R_P / AC;
+  for (const res of [1, 2]) {
+    const pent = buildGrid(res).find((c) => c.kind === 'pentagon')!;
+    // Every pentagon-space boundary point (including edge bend points) must
+    // be hit by the fully folded icosa polygon — i.e. the icosa polygon
+    // carries all sector-ray crossings so kinks animate instead of jumping.
+    for (const q of pent.polygon) {
+      const nearest = Math.min(
+        ...pent.icosaPolygon.map((p) => {
+          const f = fold(p, 1);
+          return Math.hypot(f[0] * S - q[0], f[1] * S - q[1]);
+        }),
+      );
+      assert.ok(nearest < 1e-6 * R_P, `res ${res}: pentagon point ${q} unmatched (${nearest})`);
+    }
   }
 });
 
