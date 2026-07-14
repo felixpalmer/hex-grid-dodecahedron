@@ -25,12 +25,21 @@ const MAX_RES = 5;
 const HIGHLIGHT_FACE = 1;
 
 // Display transforms: the icosa fan (edge length 1) is scaled so both
-// diagrams are the same size, and the two diagrams sit side by side.
+// diagrams are the same size. On wide screens the diagrams sit side by
+// side; on portrait screens they stack vertically.
 const S = R_P / AC;
-const ICO_C: Pt = [-440, 0];
-const PENT_C: Pt = [370, 0];
-const icoDisp = (p: Pt): Pt => [p[0] * S + ICO_C[0], p[1] * S + ICO_C[1]];
-const pentDisp = (p: Pt): Pt => [p[0] + PENT_C[0], p[1] + PENT_C[1]];
+
+interface Layout {
+  ico: Pt;
+  pent: Pt;
+}
+
+const icoDispAt =
+  (l: Layout) =>
+  (p: Pt): Pt => [p[0] * S + l.ico[0], p[1] * S + l.ico[1]];
+const pentDispAt =
+  (l: Layout) =>
+  (q: Pt): Pt => [q[0] + l.pent[0], q[1] + l.pent[1]];
 
 const WHITE_RGBA: [number, number, number, number] = [255, 255, 255, 255];
 const INK: [number, number, number] = [25, 25, 25];
@@ -76,7 +85,9 @@ interface Hover {
   icoPt: Pt;
 }
 
-const toDisplay = (cells: Cell[], t: number): DisplayCell[] => {
+const toDisplay = (cells: Cell[], t: number, layout: Layout): DisplayCell[] => {
+  const icoDisp = icoDispAt(layout);
+  const pentDisp = pentDispAt(layout);
   const icoFold = (p: Pt) => icoDisp(fold(p, t));
   return cells.map((cell) => ({
     cell,
@@ -86,7 +97,7 @@ const toDisplay = (cells: Cell[], t: number): DisplayCell[] => {
     // swap in its seamless pentagon-space boundary instead.
     ico:
       t === 1 && cell.kind === 'pentagon'
-        ? cell.polygon.map((q): Pt => [q[0] + ICO_C[0], q[1] + ICO_C[1]])
+        ? cell.polygon.map((q): Pt => [q[0] + layout.ico[0], q[1] + layout.ico[1]])
         : cell.icosaPolygon.map(icoFold),
     hi:
       cell.highlightIcosa && cell.highlightIcosa.length >= 3
@@ -106,7 +117,45 @@ const App: React.FC = () => {
   const [foldT, setFoldT] = useState(0);
   const [showParent, setShowParent] = useState(false);
   const [showSectors, setShowSectors] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [hover, setHover] = useState<Hover | null>(null);
+
+  // Portrait viewports stack the diagrams vertically.
+  const [viewport, setViewport] = useState<[number, number]>(() => [
+    window.innerWidth,
+    window.innerHeight,
+  ]);
+  useEffect(() => {
+    const onResize = () => setViewport([window.innerWidth, window.innerHeight]);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const stacked = viewport[0] < viewport[1];
+
+  const layout = useMemo<Layout>(() => {
+    if (!stacked) return {ico: [-440, 0], pent: [370, 0]};
+    return extendFaces ? {ico: [0, 340], pent: [0, -410]} : {ico: [0, 330], pent: [0, -295]};
+  }, [stacked, extendFaces]);
+
+  // Fit the stacked layout to the screen below the control panel; the
+  // side-by-side zoom matches the original design. Applied via the DeckGL
+  // key, which remounts the view when the orientation flips.
+  const initialViewState = useMemo(() => {
+    if (!stacked) return INITIAL_VIEW_STATE;
+    const panelPx = 280;
+    const halfX = extendFaces ? 470 : 320;
+    const halfY = extendFaces ? 760 : 650;
+    const availH = Math.max(300, viewport[1] - panelPx);
+    const zoom = Math.min(
+      Math.log2(viewport[0] / (2.15 * halfX)),
+      Math.log2(availH / (2.05 * halfY)),
+    );
+    // Centre the diagrams in the area below the panel: the world point at the
+    // viewport centre sits half the panel height above the content centre.
+    const target: [number, number, number] = [0, panelPx / 2 / 2 ** zoom, 0];
+    return {target, zoom};
+  }, [stacked, extendFaces, viewport]);
 
   // Animate foldT toward the checkbox target.
   const foldTRef = useRef(foldT);
@@ -137,18 +186,20 @@ const App: React.FC = () => {
       }),
     [resolution, clip, extendFaces, faceHighlightOn],
   );
-  const grid = useMemo(() => toDisplay(cells, foldT), [cells, foldT]);
+  const grid = useMemo(() => toDisplay(cells, foldT, layout), [cells, foldT, layout]);
   const parentCells = useMemo(
     () => (showParent && resolution > 0 ? buildGrid(resolution - 1, {extendFaces}) : null),
     [showParent, resolution, extendFaces],
   );
   const parentGrid = useMemo(
-    () => (parentCells ? toDisplay(parentCells, foldT) : null),
-    [parentCells, foldT],
+    () => (parentCells ? toDisplay(parentCells, foldT, layout) : null),
+    [parentCells, foldT, layout],
   );
 
   const geom = useMemo(() => {
     const t = foldT;
+    const icoDisp = icoDispAt(layout);
+    const pentDisp = pentDispAt(layout);
     const f = (p: Pt) => icoDisp(fold(p, t));
     const A = icoDisp([0, 0]);
     const face = closed(facePentagon().map(pentDisp));
@@ -218,12 +269,15 @@ const App: React.FC = () => {
       pentCorner(2 * HIGHLIGHT_FACE + 2),
     ].map(pentDisp);
     return {face, fanOuter: fanCorners, seams, faceFanOuter, faceEdges, gap, rays, hlTriangle, hlKite};
-  }, [foldT, extendFaces]);
+  }, [foldT, extendFaces, layout]);
 
-  const labelY = extendFaces ? -430 : -285;
+  const icoLabelY = layout.ico[1] - (extendFaces ? 430 : 285);
   const labels = [
-    {pos: [ICO_C[0], labelY] as Pt, text: 'Icosahedron, unfolded at a vertex'},
-    {pos: [PENT_C[0], labelY] as Pt, text: 'Dodecahedron face'},
+    {pos: [layout.ico[0], icoLabelY] as Pt, text: 'Icosahedron, unfolded at a vertex'},
+    {
+      pos: [layout.pent[0], stacked ? layout.pent[1] - 285 : icoLabelY] as Pt,
+      text: 'Dodecahedron face',
+    },
   ];
 
   const handleHover = useCallback(
@@ -235,14 +289,18 @@ const App: React.FC = () => {
       }
       const [wx, wy] = info.coordinate;
       if ((info.layer?.id ?? '').startsWith('ico')) {
-        const p = unfold([(wx - ICO_C[0]) / S, (wy - ICO_C[1]) / S], foldT);
-        setHover({index: info.index, icoPt: [wx, wy], pentPt: pentDisp(transfer(p))});
+        const p = unfold([(wx - layout.ico[0]) / S, (wy - layout.ico[1]) / S], foldT);
+        setHover({index: info.index, icoPt: [wx, wy], pentPt: pentDispAt(layout)(transfer(p))});
       } else {
-        const q: Pt = [wx - PENT_C[0], wy - PENT_C[1]];
-        setHover({index: info.index, pentPt: [wx, wy], icoPt: icoDisp(fold(invTransfer(q), foldT))});
+        const q: Pt = [wx - layout.pent[0], wy - layout.pent[1]];
+        setHover({
+          index: info.index,
+          pentPt: [wx, wy],
+          icoPt: icoDispAt(layout)(fold(invTransfer(q), foldT)),
+        });
       }
     },
-    [foldT],
+    [foldT, layout],
   );
 
   const hovered = hover ? grid[hover.index] : null;
@@ -397,54 +455,23 @@ const App: React.FC = () => {
     }),
   ].filter(Boolean);
 
-  return (
-    <div style={{position: 'absolute', inset: 0}}>
-      <DeckGL
-        views={VIEW}
-        initialViewState={INITIAL_VIEW_STATE}
-        controller={true}
-        layers={layers}
-        useDevicePixels={2}
-        onHover={handleHover}
-        getCursor={({isHovering}) => (isHovering ? 'crosshair' : 'grab')}
-        style={{background: '#fff'}}
-      />
+  const infoContent = (
+    <>
+      <div style={introStyle}>
+        In hexagonal indexing systems (e.g. h3, igeo7) hexagons are laid out on the faces of an
+        icosahedron. It is geometrically equivalent to lay them out on the dual solid, the
+        dodecahedron, leading to the same result on the sphere.
+      </div>
+      <div style={introStyle}>
+        While the hexagons are skewed on the dodecahedron, it shows where the 12 pentagonal cells
+        come from and why the total number of cells is divisible by 12.
+      </div>
+    </>
+  );
 
-      <div style={panelStyle}>
-        <div style={titleStyle}>Hex grid on a dodecahedron face</div>
-        <div style={sliderRowStyle}>
-          <label style={sliderLabelStyle}>Resolution</label>
-          <input
-            type="range"
-            min={0}
-            max={MAX_RES}
-            step={1}
-            value={resolution}
-            onChange={(e) => {
-              setResolution(Number(e.target.value));
-              setHover(null);
-            }}
-            style={{flex: 1}}
-          />
-          <span style={sliderValueStyle}>{resolution}</span>
-        </div>
-        <div style={introStyle}>
-          In hexagonal indexing systems (e.g. h3, igeo7) hexagons are laid out on the faces of an
-          icosahedron. It is geometrically equivalent to lay them out on the dual solid, the
-          dodecahedron, leading to the same result on the sphere.
-        </div>
-        <div style={introStyle}>
-          While the hexagons are skewed on the dodecahedron, it
-          shows where the 12 pentagonal cells come from and why the total number of cells is
-          divisible by 12.
-        </div>
-        <div style={metaStyle}>
-          {resolution % 2 === 1 ? 'Class III — rotated 19.1°' : 'Class II — aligned'}
-          {' · '}
-          {sphereCellCount(resolution).toLocaleString()} cells on sphere (12 ×{' '}
-          {(sphereCellCount(resolution) / 12).toLocaleString()})
-        </div>
-        <label style={checkboxRowStyle}>
+  const optionsContent = (
+    <>
+      <label style={checkboxRowStyle}>
           <input
             type="checkbox"
             checked={clip}
@@ -486,15 +513,90 @@ const App: React.FC = () => {
           />
           Show parent level (res {Math.max(0, resolution - 1)})
         </label>
-        <label style={checkboxRowStyle}>
+      <label style={checkboxRowStyle}>
+        <input
+          type="checkbox"
+          checked={showSectors}
+          onChange={(e) => setShowSectors(e.target.checked)}
+        />
+        Show Schwarz sectors
+      </label>
+    </>
+  );
+
+  const hintContent = (
+    <div style={hintStyle}>Hover either diagram to map a point through the barycentric transfer.</div>
+  );
+
+  return (
+    <div style={{position: 'absolute', inset: 0}}>
+      <DeckGL
+        key={stacked ? 'stacked' : 'wide'}
+        views={VIEW}
+        initialViewState={initialViewState}
+        controller={true}
+        layers={layers}
+        useDevicePixels={2}
+        onHover={handleHover}
+        getCursor={({isHovering}) => (isHovering ? 'crosshair' : 'grab')}
+        style={{background: '#fff'}}
+      />
+
+      <div style={panelStyle}>
+        <div style={titleStyle}>Hex grid on a dodecahedron face</div>
+        <div style={sliderRowStyle}>
+          <label style={sliderLabelStyle}>Resolution</label>
           <input
-            type="checkbox"
-            checked={showSectors}
-            onChange={(e) => setShowSectors(e.target.checked)}
+            type="range"
+            min={0}
+            max={MAX_RES}
+            step={1}
+            value={resolution}
+            onChange={(e) => {
+              setResolution(Number(e.target.value));
+              setHover(null);
+            }}
+            style={{flex: 1}}
           />
-          Show Schwarz sectors
-        </label>
-        <div style={hintStyle}>Hover either diagram to map a point through the barycentric transfer.</div>
+          <span style={sliderValueStyle}>{resolution}</span>
+        </div>
+        <div style={metaStyle}>
+          {resolution % 2 === 1 ? 'Class III — rotated 19.1°' : 'Class II — aligned'}
+          {' · '}
+          {sphereCellCount(resolution).toLocaleString()} cells on sphere (12 ×{' '}
+          {(sphereCellCount(resolution) / 12).toLocaleString()})
+        </div>
+        {stacked ? (
+          <>
+            <button
+              style={sectionHeaderStyle}
+              onClick={() => setShowInfo((v) => !v)}
+              aria-expanded={showInfo}
+            >
+              <span style={chevronStyle}>{showInfo ? '▾' : '▸'}</span> Info
+            </button>
+            {showInfo && (
+              <>
+                {infoContent}
+                {hintContent}
+              </>
+            )}
+            <button
+              style={sectionHeaderStyle}
+              onClick={() => setShowOptions((v) => !v)}
+              aria-expanded={showOptions}
+            >
+              <span style={chevronStyle}>{showOptions ? '▾' : '▸'}</span> Options
+            </button>
+            {showOptions && optionsContent}
+          </>
+        ) : (
+          <>
+            {infoContent}
+            {optionsContent}
+            {hintContent}
+          </>
+        )}
       </div>
     </div>
   );
@@ -504,7 +606,9 @@ const panelStyle: React.CSSProperties = {
   position: 'absolute',
   top: 20,
   left: 20,
-  width: 280,
+  width: 340,
+  maxWidth: 'calc(100vw - 40px)',
+  boxSizing: 'border-box',
   padding: 20,
   background: 'rgba(255,255,255,0.92)',
   border: '1px solid #e0e0e0',
@@ -520,6 +624,26 @@ const titleStyle: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 600,
   color: '#333',
+};
+
+const sectionHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '2px 0',
+  border: 'none',
+  background: 'none',
+  textAlign: 'left',
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#444',
+  cursor: 'pointer',
+};
+
+const chevronStyle: React.CSSProperties = {
+  width: 12,
+  fontSize: 11,
+  color: '#888',
 };
 
 const sliderRowStyle: React.CSSProperties = {
