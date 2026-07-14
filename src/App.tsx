@@ -36,10 +36,10 @@ interface Layout {
 
 const icoDispAt =
   (l: Layout) =>
-  (p: Pt): Pt => [p[0] * S + l.ico[0], p[1] * S + l.ico[1]];
+    (p: Pt): Pt => [p[0] * S + l.ico[0], p[1] * S + l.ico[1]];
 const pentDispAt =
   (l: Layout) =>
-  (q: Pt): Pt => [q[0] + l.pent[0], q[1] + l.pent[1]];
+    (q: Pt): Pt => [q[0] + l.pent[0], q[1] + l.pent[1]];
 
 const WHITE_RGBA: [number, number, number, number] = [255, 255, 255, 255];
 const INK: [number, number, number] = [25, 25, 25];
@@ -459,12 +459,15 @@ const App: React.FC = () => {
     <>
       <div style={introStyle}>
         In hexagonal indexing systems (e.g. h3, igeo7) hexagons are laid out on the faces of an
-        icosahedron. It is geometrically equivalent to lay them out on the dual solid, the
-        dodecahedron, leading to the same result on the sphere.
+        icosahedron, and described as <i>Icosahedral</i>.
+      </div>
+
+      <div style={introStyle}>
+        It is geometrically equivalent to lay them out on the dual solid, the dodecahedron, leading to the same result on the sphere.
       </div>
       <div style={introStyle}>
         While the hexagons are skewed on the dodecahedron, it shows where the 12 pentagonal cells
-        come from and why the total number of cells is divisible by 12.
+        come from and why the total number of cells is divisible by 12. Thus, it is arguably more appropriate to describe such systems as <i>Dodecahedral</i>
       </div>
     </>
   );
@@ -472,47 +475,47 @@ const App: React.FC = () => {
   const optionsContent = (
     <>
       <label style={checkboxRowStyle}>
-          <input
-            type="checkbox"
-            checked={clip}
-            onChange={(e) => {
-              setClip(e.target.checked);
-              setHover(null);
-            }}
-          />
-          Clip cells to face
-        </label>
-        <label style={checkboxRowStyle}>
-          <input
-            type="checkbox"
-            checked={extendFaces}
-            onChange={(e) => {
-              setExtendFaces(e.target.checked);
-              setHover(null);
-            }}
-          />
-          Show icosahedron face
-        </label>
-        <label style={checkboxRowStyle}>
-          <input
-            type="checkbox"
-            checked={foldIco}
-            onChange={(e) => {
-              setFoldIco(e.target.checked);
-              setHover(null);
-            }}
-          />
-          Fold into pentagon
-        </label>
-        <label style={checkboxRowStyle}>
-          <input
-            type="checkbox"
-            checked={showParent}
-            onChange={(e) => setShowParent(e.target.checked)}
-            disabled={resolution === 0}
-          />
-          Show parent level (res {Math.max(0, resolution - 1)})
-        </label>
+        <input
+          type="checkbox"
+          checked={clip}
+          onChange={(e) => {
+            setClip(e.target.checked);
+            setHover(null);
+          }}
+        />
+        Clip cells to face
+      </label>
+      <label style={checkboxRowStyle}>
+        <input
+          type="checkbox"
+          checked={extendFaces}
+          onChange={(e) => {
+            setExtendFaces(e.target.checked);
+            setHover(null);
+          }}
+        />
+        Show icosahedron face
+      </label>
+      <label style={checkboxRowStyle}>
+        <input
+          type="checkbox"
+          checked={foldIco}
+          onChange={(e) => {
+            setFoldIco(e.target.checked);
+            setHover(null);
+          }}
+        />
+        Fold into pentagon
+      </label>
+      <label style={checkboxRowStyle}>
+        <input
+          type="checkbox"
+          checked={showParent}
+          onChange={(e) => setShowParent(e.target.checked)}
+          disabled={resolution === 0}
+        />
+        Show parent level (res {Math.max(0, resolution - 1)})
+      </label>
       <label style={checkboxRowStyle}>
         <input
           type="checkbox"
